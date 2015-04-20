@@ -103,7 +103,7 @@ class GraphsController < ApplicationController
 
       ActiveRecord::Base.connection_pool.with_connection do |conn|
         # Get the top visible projects by issue count
-        sql = "SELECT TOP 6 project_id, COUNT(*) as issue_count"
+        sql = "SELECT #{is_sqlserver? ? 'TOP 6': ''} project_id, COUNT(*) as issue_count"
         sql << " FROM #{Issue.table_name}"
         sql << " LEFT JOIN #{Project.table_name} ON #{Issue.table_name}.project_id = #{Project.table_name}.id"
         sql << " WHERE (%s)" % Project.allowed_to_condition(User.current, :view_issues)
@@ -118,7 +118,7 @@ class GraphsController < ApplicationController
         end
         sql << " GROUP BY project_id"
         sql << " ORDER BY issue_count DESC"
-        #sql << " LIMIT 6"
+        sql << " LIMIT 6" unless is_sqlserver?
         top_projects = conn.select_all(sql).collect { |p| p["project_id"] }
 
         # Get the issues created per project, per day
@@ -342,9 +342,9 @@ class GraphsController < ApplicationController
         if !@project.nil?
             ids = [@project.id]
             ids += @project.descendants.active.visible.collect(&:id)
-            @issues = Issue.visible.includes(:status).where("#{IssueStatus.table_name}.is_closed=? AND #{Project.table_name}.id IN (?)", false, ids)
+            @issues = Issue.visible.open.where("#{Project.table_name}.id IN (?)", ids)
         else
-            @issues = Issue.visible.includes(:status).where("#{IssueStatus.table_name}.is_closed=?", false)
+            @issues = Issue.visible.open
         end
     rescue ActiveRecord::RecordNotFound
         render_404
@@ -355,9 +355,9 @@ class GraphsController < ApplicationController
         if !@project.nil?
             ids = [@project.id]
             ids += @project.descendants.active.visible.collect(&:id)
-            @bugs= Issue.visible.includes(:status).where("#{Issue.table_name}.tracker_id IN (?) AND #{Project.table_name}.id IN (?)", 1, ids)
+            @bugs= Issue.visible.joins(:status).where("#{Issue.table_name}.tracker_id IN (?) AND #{Project.table_name}.id IN (?)", 1, ids)
         else
-            @bugs= Issue.visible.includes(:status).where("#{Issue.table_name}.tracker_id IN (?)", 1)
+            @bugs= Issue.visible.joins(:status).where("#{Issue.table_name}.tracker_id IN (?)", 1)
         end
     rescue ActiveRecord::RecordNotFound
         render_404
@@ -375,5 +375,9 @@ class GraphsController < ApplicationController
         deny_access unless User.current.allowed_to?(:view_issues, @version.project)
     rescue ActiveRecord::RecordNotFound
         render_404
+    end
+
+    def is_sqlserver?
+        ActiveRecord::Base.connection.adapter_name == 'SQLServer'
     end
 end
