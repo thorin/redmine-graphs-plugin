@@ -45,6 +45,7 @@
             stroke="<%= issue_statuses_by_id[old_status].position > issue_statuses_by_id[new_status].position ? "red" : "green" %>"
         >
             <%
+                yesterday = (Time.now - 7.day).strftime('%Y-%m-%d %H:%M:%S')
                 data = ActiveRecord::Base.connection.select_all("
                     select j.journalized_id as id from journals as j
                     left join journal_details as jd on j.id = jd.journal_id
@@ -52,7 +53,7 @@
                     left join issue_statuses as is2 on jd.value = is2.id
                     where journalized_type = 'issue'
                     and prop_key = 'status_id'
-                    and DATE_SUB(CURRENT_TIMESTAMP, INTERVAL 7 DAY) <= created_on
+                    and #{ActiveRecord::Base.connection.quote(yesterday)} <= created_on
                     and is1.id = #{status_change['old_status']}
                     and is2.id = #{status_change['new_status']}
                 ")
